@@ -15,6 +15,13 @@ function attachBIOS(BIOS) {
     catch (error) {
         IodineGUI.Iodine.attachBIOS(BIOS);
     }
+    // Save BIOS in LocalStorage
+    try {
+        setValue("BIOS_FILE", arrayToBase64(IodineGUI.Iodine.BIOS));
+    }
+    catch (error) {
+        writeRedTemporaryText("Could not store bios : " + error.message);
+    }
 }
 function attachROM(ROM) {
     try {

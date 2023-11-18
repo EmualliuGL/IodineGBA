@@ -90,6 +90,8 @@ window.onload = function () {
     registerGUIEvents();
     //Register GUI settings.
     registerGUISettings();
+    //Download the BIOS:
+    registerBIOS();
 }
 function registerIodineHandler() {
     try {
@@ -168,4 +170,17 @@ function registerAudioHandler() {
     var Mixer = new GlueCodeMixer(document.getElementById("play"));
     IodineGUI.mixerInput = new GlueCodeMixerInput(Mixer);
     IodineGUI.Iodine.attachAudioHandler(IodineGUI.mixerInput);
+}
+function registerBIOS() {
+    // Load BIOS from LocalStorage
+    try {
+        var BIOS = findValue("BIOS_FILE");
+        if (BIOS != null) {
+            writeRedTemporaryText("Loaded BIOS.");
+            attachBIOS(base64ToArray(BIOS));
+        }
+    }
+    catch (error) {
+        writeRedTemporaryText("Could not read BIOS: " + error.message);
+    }
 }
