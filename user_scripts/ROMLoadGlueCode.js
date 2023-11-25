@@ -8,7 +8,7 @@
 
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-function attachBIOS(BIOS) {
+function attachBIOS(BIOS, saveAfter = true) {
     try {
         IodineGUI.Iodine.attachBIOS(new Uint8Array(BIOS));
     }
@@ -16,35 +16,46 @@ function attachBIOS(BIOS) {
         IodineGUI.Iodine.attachBIOS(BIOS);
     }
     // Save BIOS in LocalStorage
-    try {
-        setValue("BIOS_FILE", arrayToBase64(IodineGUI.Iodine.BIOS));
-    }
-    catch (error) {
-        writeRedTemporaryText("Could not store bios : " + error.message);
+    if (saveAfter) {
+        try {
+            setValue('BIOS_FILE', arrayToBase64(IodineGUI.Iodine.BIOS));
+        }
+        catch (error) {
+            writeRedTemporaryText('Could not store bios : ' + error.message);
+        }
     }
 }
-function attachROM(ROM) {
+function attachROM(ROM, saveAfter = true) {
     try {
         IodineGUI.Iodine.attachROM(new Uint8Array(ROM));
     }
     catch (error) {
         IodineGUI.Iodine.attachROM(ROM);
     }
+
+    // Save ROM in IndexedDB
+    if (saveAfter) {
+        // convert ArrayBuffer to base64 encoded string
+        compressArrayBuffer(IodineGUI.Iodine.ROM).then(async (compressed) => {
+            RomsRepository.addRom('LAST_ROM', compressed);
+        });
+    }
 }
 function fileLoadShimCode(files, ROMHandler) {
     if (typeof files != "undefined") {
         if (files.length >= 1) {
+            let file = files[files.length - 1];
             //Gecko 1.9.2+ (Standard Method)
             try {
                 var binaryHandle = new FileReader();
                 binaryHandle.onloadend = function () {
                     ROMHandler(this.result);
                 }
-                binaryHandle.readAsArrayBuffer(files[files.length - 1]);
+                binaryHandle.readAsArrayBuffer(file);
             }
             catch (error) {
                 try {
-                    var result = files[files.length - 1].getAsBinary();
+                    var result = file.getAsBinary();
                     var resultConverted = [];
                     for (var index = 0; index < result.length; ++index) {
                         resultConverted[index] = result.charCodeAt(index) & 0xFF;
@@ -86,3 +97,90 @@ function processDownload(parentObj, attachHandler) {
         attachHandler(dataArray);
     }
 }
+async function compressArrayBuffer(input, algorithm = 'gzip') {
+    const stream = new Response(input).body
+        .pipeThrough(new CompressionStream(algorithm));
+    return await new Response(stream).arrayBuffer();
+}
+async function decompressArrayBuffer(input, algorithm = 'gzip') {
+    const decompressedStream = new Response(input).body
+        .pipeThrough(new DecompressionStream(algorithm));
+    return await new Response(decompressedStream).arrayBuffer()
+}
+
+async function uInt8ArrayToBase64Compressed(uInt8Array) {
+    let compressed = await compressArrayBuffer(uInt8Array, 'gzip');
+    return arrayToBase64(new Uint8Array(compressed));
+}
+async function base64CompressedToUInt8Array(base64Compressed) {
+    let compressed = new Uint8Array(base64ToArray(base64Compressed));
+    return new Uint8Array(await decompressArrayBuffer(compressed, 'gzip'));
+}
+
+// IndexedDB playground
+const RomsRepository = function() {
+    const indexedDB =
+        window.indexedDB ||
+        window.mozIndexedDB ||
+        window.webkitIndexedDB ||
+        window.msIndexedDB ||
+        window.shimIndexedDB;
+    if (!indexedDB) {
+        console.log('IndexedDB could not be found in this browser.');
+    }
+    let db = null;
+    let dbName = 'RomsDatabase';
+    let dbVersion = 1;
+    let storeName = 'roms';
+    let request = indexedDB.open(dbName, dbVersion);
+    request.onerror = function (event) {
+        console.error('An error occurred with IndexedDB');
+        console.error(event);
+    };
+    request.onupgradeneeded = function () {
+        console.log('Database upgrade needed');
+        const db = request.result;
+        const store = db.createObjectStore(storeName);
+    };
+    request.onsuccess = function () {
+        console.log('Database opened successfully');
+        db = request.result;
+        console.log(db);
+    };
+    function _addRom(name, file) {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        store.put({file: file }, name);
+    }
+    function _getRom(name, callback) {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const romQuery = store.get(name);
+
+        romQuery.onsuccess = function () {
+            callback(romQuery.result.file);
+        };
+    }
+    function addRom(name, file) {
+        if (db != null) {
+            _addRom(name, file);
+        } else {
+            request.addEventListener("success", (event) => {
+                _addRom(name, file);
+            });
+        }
+    }
+    function getRom(name, callback) {
+        if (db != null) {
+            _getRom(name, callback);
+        } else {
+            request.addEventListener("success", (event) => {
+                _getRom(name, callback);
+            });
+        }
+    }
+    return {
+        addRom: addRom,
+        getRom: getRom,
+    }
+}();

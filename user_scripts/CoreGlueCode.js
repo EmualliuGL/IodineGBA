@@ -90,8 +90,10 @@ window.onload = function () {
     registerGUIEvents();
     //Register GUI settings.
     registerGUISettings();
-    //Download the BIOS:
+    //Load BIOS from localStorage:
     registerBIOS();
+    //Load ROM from IndexedDB:
+    registerROM();
 }
 function registerIodineHandler() {
     try {
@@ -177,10 +179,28 @@ function registerBIOS() {
         var BIOS = findValue("BIOS_FILE");
         if (BIOS != null) {
             writeRedTemporaryText("Loaded BIOS.");
-            attachBIOS(base64ToArray(BIOS));
+            attachBIOS(base64ToArray(BIOS), false);
         }
     }
     catch (error) {
         writeRedTemporaryText("Could not read BIOS: " + error.message);
     }
+}
+function registerROM() {
+    // Load ROM from IndexedDB
+    RomsRepository.getRom('LAST_ROM', function(compressed) {
+        if (compressed !== undefined) {
+            decompressArrayBuffer(compressed).then(async (ROM) => {
+                try {
+                    if (ROM != null) {
+                        writeRedTemporaryText("Loaded ROM.");
+                        attachROM(ROM, false);
+                    }
+                }
+                catch (error) {
+                    writeRedTemporaryText("Could not read BIOS: " + error.message);
+                }
+            });
+        }
+    });
 }
