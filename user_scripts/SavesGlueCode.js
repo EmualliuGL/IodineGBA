@@ -40,6 +40,7 @@ function registerSaveHandlers() {
     IodineGUI.Iodine.attachSaveImportHandler(ImportSaveCallback);
 }
 function import_save(blobData) {
+    let rawBlobData = blobData;
     blobData = decodeBlob(blobData);
     if (blobData && blobData.blobs) {
         if (blobData.blobs.length > 0) {
@@ -60,10 +61,43 @@ function import_save(blobData) {
         }
         else {
             writeRedTemporaryText("Could not decode the imported file.");
+            import_raw_save(rawBlobData);
         }
     }
     else {
         writeRedTemporaryText("Could not decode the imported file.");
+    }
+}
+function import_raw_save(blobData) {
+    document.getElementById("import").value = "";
+    try {
+        let gameName = IodineGUI.Iodine.getGameName();
+        if (gameName !== "") {
+            if (IodineGUI.Iodine.IOCore.saves.currentChip.saves.length === blobData.length) {
+                writeRedTemporaryText("Trying to decode raw save file.");
+                IodineGUI.Iodine.pause();
+                IodineGUI.Iodine.audio.mixer.audio.setupWebAudio();
+                if (confirm("This will overwrite your current saves for this game. Are you sure ?")) {
+                    let convertedSave = blobData.split('');
+                    convertedSave = convertedSave.map(char => char.charCodeAt(0));
+                    let saveType = IodineGUI.Iodine.IOCore.saves.exportSaveType() | 0;
+                    IodineGUI.Iodine.IOCore.saves.importSave(convertedSave, [saveType | 0]);
+                    if (IodineGUI.Iodine.IOCore.saves.currentChip.saves === convertedSave) {
+                        IodineGUI.Iodine.restart();
+                        writeRedTemporaryText("Save loaded in ROM.");
+                    } else {
+                        writeRedTemporaryText("The imported file doesn't match the current cartridge.");
+                    }
+                }
+                IodineGUI.Iodine.play();
+            }
+            else {
+                writeRedTemporaryText("The imported file doesn't match the current cartridge.");
+            }
+        }
+    } catch(e){
+        writeRedTemporaryText("Could not decode the imported file.");
+        console.log(e);
     }
 }
 function generateBlob(keyName, encodedData) {
