@@ -76,7 +76,6 @@ function import_raw_save(blobData) {
             if (IodineGUI.Iodine.IOCore.saves.currentChip.saves.length === blobData.length) {
                 writeRedTemporaryText("Trying to decode raw save file.");
                 IodineGUI.Iodine.pause();
-                IodineGUI.Iodine.audio.mixer.audio.setupWebAudio();
                 if (confirm("This will overwrite your current saves for this game. Are you sure ?")) {
                     let convertedSave = blobData.split('');
                     convertedSave = convertedSave.map(char => char.charCodeAt(0));
