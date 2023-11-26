@@ -59,105 +59,202 @@ function registerGUIEvents() {
     addEvent("change", document.getElementById("speedset"), speedChangeFunc);
     addEvent("input", document.getElementById("speedset"), speedChangeFunc);
     addEvent("click", document.getElementById("fullscreen"), toggleFullScreen);
+    // Controller Inputs
+    let controls = [
+        {key: 0, elem: document.getElementById("touch-a"), touches: [], timestamp: []},
+        {key: 1, elem: document.getElementById("touch-b"), touches: [], timestamp: []},
+        {key: 2, elem: document.getElementById("touch-select"), touches: [], timestamp: []},
+        {key: 3, elem: document.getElementById("touch-start"), touches: [], timestamp: []},
+        {key: 4, elem: document.getElementById("touch-right"), touches: [], timestamp: []},
+        {key: 5, elem: document.getElementById("touch-left"), touches: [], timestamp: []},
+        {key: 6, elem: document.getElementById("touch-up"), touches: [], timestamp: []},
+        {key: 7, elem: document.getElementById("touch-down"), touches: [], timestamp: []},
+        {key: 8, elem: document.getElementById("touch-r"), touches: [], timestamp: []},
+        {key: 9, elem: document.getElementById("touch-l"), touches: [], timestamp: []}
+    ];
+    function CircleRectangleIntersection(circle, rectangle) {
+        // Adjust the circle coordinates based on the rotation of the rectangle
+        let dx = circle.x - rectangle.x;
+        let dy = circle.y - rectangle.y;
+        let rotatedX = dx * Math.cos(rectangle.angle) - dy * Math.sin(rectangle.angle) + rectangle.x;
+        let rotatedY = dx * Math.sin(rectangle.angle) + dy * Math.cos(rectangle.angle) + rectangle.y;
+
+        // Closest point in the rectangle to the circle
+        let closestX = Math.max(rectangle.x - rectangle.width / 2, Math.min(rotatedX, rectangle.x + rectangle.width / 2));
+        let closestY = Math.max(rectangle.y - rectangle.height / 2, Math.min(rotatedY, rectangle.y + rectangle.height / 2));
+
+        // Calculate the distance between the closest point and the center of the circle
+        let distanceX = rotatedX - closestX;
+        let distanceY = rotatedY - closestY;
+        let distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+
+        // Check if the distance is less than or equal to the circle radius
+        return distance <= circle.radius / 2;
+    }
+    function checkCollisionCircle(touch, elem){
+        let elemRect = elem.getBoundingClientRect();
+        let rectangle = {
+            x: elemRect.x + (elem.offsetWidth / 2) + (elemRect.width - elem.offsetWidth) / 2,
+            y: elemRect.y + (elem.offsetHeight / 2) + (elemRect.height - elem.offsetHeight) / 2,
+            width: elem.offsetWidth,
+            height: elem.offsetHeight,
+            angle: 0,
+        };
+        let matrix = window.getComputedStyle(elem).getPropertyValue('transform').match(/^matrix\((.+)\)$/);
+        if (matrix) {
+            // Obtenez les valeurs de la matrice
+            let matrixValues = matrix[1].split(', ');
+            // Calculez l'angle de rotation en radians
+            rectangle.angle = Math.atan2(parseFloat(matrixValues[1]), parseFloat(matrixValues[0]));
+            if (rectangle.angle > 0) {
+                // Trouver le centre du rectangle englobant
+                var centerX = elemRect.x + elemRect.width / 2;
+                var centerY = elemRect.y + elemRect.height / 2;
+
+                // Calculer les coordonnées du coin supérieur gauche après rotation
+                rectangle.x = centerX + (rectangle.x - centerX) * Math.cos(rectangle.angle) - (rectangle.y - centerY) * Math.sin(rectangle.angle);
+                rectangle.y = centerY + (rectangle.x - centerX) * Math.sin(rectangle.angle) + (rectangle.y - centerY) * Math.cos(rectangle.angle);
+            }
+        }
+
+        let radius = (touch.radiusX + touch.radiusY) / 2;
+        let circle = {
+            x: touch.pageX,
+            y: touch.pageY,
+            radius: radius > 12 ? radius : 12
+        };
+
+        return CircleRectangleIntersection(circle, rectangle);
+    }
+    function pressButton(control) {
+        IodineGUI.Iodine.keyDown(control.key);
+        control.elem.classList.add('pressed');
+        navigator.vibrate(10);
+    }
+    function releaseButton(control) {
+        IodineGUI.Iodine.keyUp(control.key);
+        control.elem.classList.remove('pressed');
+        navigator.vibrate(10);
+    }
+    addEvent("touchstart", document, function (e) {
+        let touches = e.changedTouches;
+        for (let i = 0; i < touches.length; i++) {
+            for (const control of controls) {
+                let found = false;
+                if (checkCollisionCircle(touches[i], control.elem)) {
+                    e.preventDefault();
+                    found = true;
+                }
+                if(!control.touches.includes(touches[i].identifier) && found) {
+                    control.touches.push(touches[i].identifier);
+                    if (control.touches.length === 1) {
+                        control.timestamp[touches[i].identifier] = IodineGUI.Iodine.lastTimestamp;
+                        pressButton(control);
+                    }
+                }
+            }
+        }
+    });
+    addEvent("touchmove", document, function (e) {
+        let touches = e.changedTouches;
+        for (let i = 0; i < touches.length; i++) {
+            for (const control of controls) {
+                let found = false;
+                if (checkCollisionCircle(touches[i], control.elem)) {
+                    e.preventDefault();
+                    found = true;
+                }
+                if(!control.touches.includes(touches[i].identifier) && found) {
+                    control.touches.push(touches[i].identifier);
+                    if (control.touches.length === 1) {
+                        pressButton(control);
+                    }
+                } else if (control.touches.includes(touches[i].identifier) && !found) {
+                    control.touches.splice(control.touches.indexOf(touches[i].identifier), 1);
+                    if (control.touches.length === 0) {
+                        releaseButton(control);
+                    }
+                }
+            }
+        }
+    });
+    let touchendCallback = function (e) {
+        let touches = e.changedTouches;
+        for (let i = 0; i < touches.length; i++) {
+            for (const control of controls) {
+                if (control.touches.includes(touches[i].identifier)) {
+                    control.touches.splice(control.touches.indexOf(touches[i].identifier), 1);
+                    if (control.touches.length === 0) {
+                        let timeDiff = IodineGUI.Iodine.lastTimestamp - control.timestamp[touches[i].identifier];
+                        control.timestamp[touches[i].identifier] = null;
+                        if (timeDiff > 0) {
+                            releaseButton(control);
+                        } else {
+                            setTimeout(() => {
+                                console.log("delayed release");
+                                if (control.touches.length === 0) {
+                                    releaseButton(control);
+                                }
+                            }, 1);
+                        }
+                    }
+                } else {
+                    if (checkCollisionCircle(touches[i], control.elem)) {
+                        console.log("This never happens : element is in touchend but wasn't in touchstart or touchmove.");
+                        e.preventDefault();
+                        pressButton(control);
+                        setTimeout(() => {
+                            if (control.touches.length === 0) {
+                                releaseButton(control);
+                            }
+                        }, 1);
+                    }
+                }
+            }
+        }
+    };
+    addEvent("touchend", document, touchendCallback);
+    addEvent("touchcancel", document, touchendCallback);
+    // GBA Bindings
     addEvent("click", document.getElementById("key_a"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 0;
-    });
-    addEvent("mousedown", document.getElementById("touch-a"), function () {
-        IodineGUI.Iodine.keyDown(0);
-    });
-    addEvent("mouseup", document.getElementById("touch-a"), function () {
-        IodineGUI.Iodine.keyUp(0);
     });
     addEvent("click", document.getElementById("key_b"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 1;
     });
-    addEvent("mousedown", document.getElementById("touch-b"), function () {
-        IodineGUI.Iodine.keyDown(1);
-    });
-    addEvent("mouseup", document.getElementById("touch-b"), function () {
-        IodineGUI.Iodine.keyUp(1);
-    });
     addEvent("click", document.getElementById("key_select"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 2;
-    });
-    addEvent("mousedown", document.getElementById("touch-select"), function () {
-        IodineGUI.Iodine.keyDown(2);
-    });
-    addEvent("mouseup", document.getElementById("touch-select"), function () {
-        IodineGUI.Iodine.keyUp(2);
     });
     addEvent("click", document.getElementById("key_start"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 3;
     });
-    addEvent("mousedown", document.getElementById("touch-start"), function () {
-        IodineGUI.Iodine.keyDown(3);
-    });
-    addEvent("mouseup", document.getElementById("touch-start"), function () {
-        IodineGUI.Iodine.keyUp(3);
-    });
     addEvent("click", document.getElementById("key_right"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 4;
-    });
-    addEvent("mousedown", document.getElementById("touch-right"), function () {
-        IodineGUI.Iodine.keyDown(4);
-    });
-    addEvent("mouseup", document.getElementById("touch-right"), function () {
-        IodineGUI.Iodine.keyUp(4);
     });
     addEvent("click", document.getElementById("key_left"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 5;
     });
-    addEvent("mousedown", document.getElementById("touch-left"), function () {
-        IodineGUI.Iodine.keyDown(5);
-    });
-    addEvent("mouseup", document.getElementById("touch-left"), function () {
-        IodineGUI.Iodine.keyUp(5);
-    });
     addEvent("click", document.getElementById("key_up"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 6;
-    });
-    addEvent("mousedown", document.getElementById("touch-up"), function () {
-        IodineGUI.Iodine.keyDown(6);
-    });
-    addEvent("mouseup", document.getElementById("touch-up"), function () {
-        IodineGUI.Iodine.keyUp(6);
     });
     addEvent("click", document.getElementById("key_down"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 7;
     });
-    addEvent("mousedown", document.getElementById("touch-down"), function () {
-        IodineGUI.Iodine.keyDown(7);
-    });
-    addEvent("mouseup", document.getElementById("touch-down"), function () {
-        IodineGUI.Iodine.keyUp(7);
-    });
     addEvent("click", document.getElementById("key_r"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 8;
     });
-    addEvent("mousedown", document.getElementById("touch-r"), function () {
-        IodineGUI.Iodine.keyDown(8);
-    });
-    addEvent("mouseup", document.getElementById("touch-r"), function () {
-        IodineGUI.Iodine.keyUp(8);
-    });
     addEvent("click", document.getElementById("key_l"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesGBA;
         IodineGUI.toMapIndice = 9;
-    });
-    addEvent("mousedown", document.getElementById("touch-l"), function () {
-        IodineGUI.Iodine.keyDown(9);
-    });
-    addEvent("mouseup", document.getElementById("touch-l"), function () {
-        IodineGUI.Iodine.keyUp(9);
     });
     addEvent("click", document.getElementById("key_volumedown"), function () {
         IodineGUI.toMap = IodineGUI.defaults.keyZonesControl;
