@@ -1,3 +1,12 @@
+### IodineGBA - JavaScript GameBoy Advance Emulator
+
+A GameBoy Advance emulator that utilizes HTML5 canvas and JavaScript audio APIs to provide a full emulation of the console.
+
+Features I added to this fork :
+ - Saving BIOS file in localStorage.
+ - Saving last rom in IndexedDB.
+ - Functional touch controls
+
 JavaScript GameBoy Advance Emulator
 =================================
 
